@@ -1,8 +1,8 @@
 import asyncio
 import random
 import re
+import sys
 import time
-
 from struct import pack
 from urllib.parse import urlparse
 
@@ -11,6 +11,8 @@ from .log import logger
 
 TOPIC_NAME_RE = re.compile(r'^[\.a-zA-Z0-9_-]+$')
 CHANNEL_NAME_RE = re.compile(r'^[\.a-zA-Z0-9_-]+(#ephemeral)?$')
+
+PY_36 = sys.version_info >= (3, 6)
 
 
 def get_host_and_port(host):
@@ -103,7 +105,7 @@ class MaxRetriesExceeded(Exception):
 
 def retry_iterator(init_delay=0.1, max_delay=10.0, factor=2.7182818284590451,
                    jitter=0.11962656472, max_retries=None, now=True):
-    """Based on twisted reconnection factory.
+    '''Based on twisted reconnection factory.
 
     :param init_delay:
     :param max_delay:
@@ -112,7 +114,7 @@ def retry_iterator(init_delay=0.1, max_delay=10.0, factor=2.7182818284590451,
     :param max_retries:
     :param now:
     :return:
-    """
+    '''
     retries, delay = 0, init_delay
     if now:
         retries += 1

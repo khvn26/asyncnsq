@@ -1,18 +1,19 @@
 import asyncio
-import random
-from collections import deque
-import time
 import logging
+import random
+import time
+from collections import deque
+
 from asyncnsq.http import NsqLookupd
 from asyncnsq.http.exceptions import NsqHttpException
 from asyncnsq.nsq import Nsq
-from asyncnsq.utils import RdyControl
+from asyncnsq.utils import PY_36, RdyControl
 
 logger = logging.getLogger(__name__)
 
 
 class NsqConsumer:
-    """Experiment purposes"""
+    '''Experiment purposes'''
 
     def __init__(self, nsqd_tcp_addresses=None, lookupd_http_addresses=None,
                  max_in_flight=42, loop=None):
@@ -128,12 +129,13 @@ class NsqConsumer:
             fut = self._loop.create_task(self._queue.get())
             yield fut
 
-    async def messages(self):
-        if not self._is_subscribe:
-            raise ValueError('You must subscribe to the topic first')
+    if PY_36:
+        async def messages(self):
+            if not self._is_subscribe:
+                raise ValueError('You must subscribe to the topic first')
 
-        while self._is_subscribe:
-            yield await self._queue.get()
+            while self._is_subscribe:
+                yield await self._queue.get()
 
     def is_starved(self):
         return any(conn.is_starved()
