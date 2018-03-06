@@ -31,7 +31,7 @@ class NsqHTTPProducer(BaseNsqProducer):
         :return:
         """
         conn = self._get_connection()
-        return (await conn.pub(topic, message))
+        return await conn.pub(topic, message)
 
     async def mpublish(self, topic, message, *messages):
         """XXX
@@ -42,7 +42,7 @@ class NsqHTTPProducer(BaseNsqProducer):
         :return:
         """
         conn = self._get_connection()
-        return (await conn.mpub(topic, message, *messages))
+        return await conn.mpub(topic, message, *messages)
 
     def close(self):
         for conn in self._connections:

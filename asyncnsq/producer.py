@@ -76,7 +76,7 @@ class NsqTCPProducer(BaseNsqProducer):
         return await conn.mpub(topic, message, *messages)
 
     def close(self):
-        for conn in self._connections:
+        for conn in self._connections.values():
             conn.close()
 
 

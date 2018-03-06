@@ -3,7 +3,7 @@ from . import consts
 import time
 from .log import logger
 from .utils import retry_iterator, RdyControl
-from .connection import create_connection
+from .connection import NsqConnection
 from .consts import TOUCH, REQ, FIN, RDY, CLS, MPUB, PUB, SUB, AUTH, DPUB
 
 
@@ -27,7 +27,7 @@ async def create_nsq(host='127.0.0.1', port=4150, loop=None, queue=None,
                feature_negotiation=feature_negotiation,
                tls_v1=tls_v1, snappy=snappy, deflate=deflate,
                deflate_level=deflate_level,
-               sample_rate=sample_rate, consumer=consumer, loop=loop)
+               sample_rate=sample_rate, loop=loop)
     await conn.connect()
     return conn
 
@@ -37,7 +37,7 @@ class Nsq:
     def __init__(self, host='127.0.0.1', port=4150, loop=None, queue=None,
                  heartbeat_interval=30000, feature_negotiation=True,
                  tls_v1=False, snappy=False, deflate=False, deflate_level=6,
-                 sample_rate=0, consumer=False, max_in_flight=42):
+                 sample_rate=0):
         # TODO: add parameters type and value validation
         self._config = {
             "deflate": deflate,
@@ -51,7 +51,6 @@ class Nsq:
 
         self._host = host
         self._port = port
-        self._conn = None
         self._loop = loop
         self._queue = queue or asyncio.Queue(loop=self._loop)
 
@@ -60,34 +59,35 @@ class Nsq:
         self._rdy_state = 0
         self._last_message = None
 
-        self._on_rdy_changed_cb = None
+        self._rdy_callback = None
+
         self._last_rdy = 0
-        self.consumer = consumer
-        if self.consumer:
-            self._idle_timeout = 10
-            self._max_in_flight = max_in_flight
-            self._rdy_control = RdyControl(idle_timeout=self._idle_timeout,
-                                           max_in_flight=self._max_in_flight,
-                                           loop=self._loop)
+
+        self._conn = NsqConnection(self._host, self._port,
+                                   queue=self._queue, loop=self._loop,
+                                   on_message=self._on_message)
+
+    def set_rdy_callback(self, callback):
+        self._rdy_callback = callback
 
     async def connect(self):
-        self._conn = await create_connection(self._host, self._port,
-                                             self._queue, loop=self._loop)
+        await self._conn.connect()
 
-        self._conn._on_message = self._on_message
         await self._conn.identify(**self._config)
+
         self._status = consts.CONNECTED
-        if self.consumer:
-            self._rdy_control.add_connection(self)
 
     def _on_message(self, msg):
         # should not be coroutine
         # update connections rdy state
         self.rdy_state = int(self.rdy_state) - 1
 
-        self._last_message = time.time()
-        if self._on_rdy_changed_cb is not None:
-            self._on_rdy_changed_cb(self.id)
+        # self._last_message = time.time()
+        self._last_message = msg.timestamp * 1e-9
+
+        if self._rdy_callback is not None:
+            self._rdy_callback(self.id)
+
         return msg
 
     @property
@@ -108,19 +108,24 @@ class Nsq:
 
     async def reconnect(self):
         timeout_generator = retry_iterator(init_delay=0.1, max_delay=10.0)
-        while not (self._status == consts.CONNECTED):
+
+        while self._status != consts.CONNECTED:
             try:
                 await self.connect()
+
             except ConnectionError:
-                logger.error("Can not connect to: {}:{} ".format(
-                    self._host, self._port))
+                logger.error("reconnect failed: %s:%d ",
+                             self._host, self._port)
+
             else:
                 self._status = consts.CONNECTED
-            t = next(timeout_generator)
-            await asyncio.sleep(t, loop=self._loop)
+
+            timeout = next(timeout_generator)
+
+            await asyncio.sleep(timeout, loop=self._loop)
 
     async def execute(self, command, *args, data=None):
-        if self._status <= consts.CONNECTED and self._reconnect:
+        if self._status <= consts.CONNECTED:
             await self.reconnect()
 
         response = self._conn.execute(command, *args, data=data)
@@ -129,18 +134,6 @@ class Nsq:
     @property
     def id(self):
         return self._conn.endpoint
-
-    def wait_messages(self):
-        # print('wait_messages')
-        while True:
-            future = self._queue.get()
-            print(future, type(future))
-            aa = yield from future
-            while not aa.done():
-                print('not done')
-                pass
-            print(aa.result())
-            yield aa.result()
 
     async def auth(self, secret):
         """
@@ -161,11 +154,10 @@ class Nsq:
 
         return await self._conn.execute(SUB, topic, channel)
 
-    async def _redistribute(self):
-        while self._is_subscribe:
-            self._rdy_control.redistribute()
-            await asyncio.sleep(60,
-                                loop=self._loop)
+    # async def _redistribute(self):
+    #     while self._is_subscribe:
+    #         self._rdy_control.redistribute()
+    #         await asyncio.sleep(60, loop=self._loop)
 
     async def pub(self, topic, message):
         """
@@ -257,5 +249,9 @@ class Nsq:
                        self.in_flight >= (self._last_rdy * 0.85))
         return starved
 
+    @property
+    def last_rdy(self):
+        return self._last_rdy
+
     def __repr__(self):
-        return '<Nsq{}>'.format(self._conn.__repr__())
+        return '<Nsq conn={} >'.format(self._conn.__repr__())

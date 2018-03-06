@@ -1,248 +1,228 @@
 import asyncio
-import json
-import ssl
 
+import ssl
 from collections import deque
 
 from . import consts
-from .log import logger
+from ._json import json
 from .containers import NsqMessage
-from .exceptions import ProtocolError, make_error
-from .protocol import Reader, DeflateReader, SnappyReader
+from .exceptions import ProtocolError, ERROR_CODES
+from .log import logger
+from .protocol import DeflateReader, Reader, SnappyReader
 
 
-async def create_connection(host='localhost', port=4151, queue=None, loop=None):
+async def create_connection(host='localhost', port=4151, queue=None,
+                            loop=None, on_message=None):
     """XXX"""
-    reader, writer = await asyncio.open_connection(
-        host, port, loop=loop)
-    conn = NsqConnection(reader, writer, host, port, queue=queue, loop=loop)
-    conn.connect()
+    conn = NsqConnection(host, port, queue=queue,
+                         loop=loop, on_message=on_message)
+
+    await conn.connect()
+
     return conn
 
 
 class NsqConnection:
     """XXX"""
 
-    def __init__(self, reader, writer, host, port, *, on_message=None,
-                 queue=None, loop=None):
-
+    def __init__(self, host, port, *, reader=None, writer=None,
+                 on_message=None, queue=None, loop=None):
+        # assign parameter values
         self._reader, self._writer = reader, writer
         self._host, self._port = host, port
-
+        self._on_message = on_message
         self._loop = loop or asyncio.get_event_loop()
 
-        assert isinstance(queue, asyncio.Queue) or queue is None
+        assert isinstance(queue, (asyncio.Queue, type(None)))
         self._queue = queue or asyncio.Queue(loop=self._loop)
 
+        # set up attributes
+        ## default parser
         self._parser = Reader()
-        # next queue is used for nsq commands
+        ## NSQ command execution queue
         self._cmd_waiters = deque()
-        self._closing = False
-        self._closed = False
-        self._reader_task = asyncio.Task(self._read_data(), loop=self._loop)
-        # mark connection in upgrading state to ssl socket
-        self._is_upgrading = False
-        self._on_message = on_message
-        self._on_close = None
 
-        # number of received but not acked or req messages
+        ## attribute for _read_data task storage
+        self._reader_task = None
+        ## indicates whether the connection is in upgrading state
+        self._is_upgrading = False
+        ## indicates whether the connection is closed
+        self._closed = False
+        ## number of received but not acked or req messages
         self._in_flight = 0
 
-    def connect(self):
-        self._send_magic()
+    # Private methods below.
 
-    def execute(self, command, *args, data=None, cb=None):
-        """XXX"""
-        assert self._reader and not self._reader.at_eof(), (
-            "Connection closed or corrupted")
-        if command is None:
-            raise TypeError("command must not be None")
-        if None in set(args):
-            raise TypeError("args must not contain None")
-        fut = asyncio.Future(loop=self._loop)
+    async def _establish_connection(self, tls=False):
+        transport = None
+        kwargs = {
+            'host': self._host,
+            'port': self._port
+        }
 
-        if command in (b'NOP', b'FIN', b'RDY', b'REQ', b'TOUCH'):
-            fut.set_result(b'OK')
-        else:
-            self._cmd_waiters.append((fut, cb))
+        if self._writer:
+            transport = self._writer.transport
+            transport.pause_reading()
 
-        command_raw = self._parser.encode_command(command, *args, data=data)
-        logger.debug('execute command %s' % command_raw)
-        self._writer.write(command_raw)
+            kwargs['sock'] = transport.get_extra_info('socket', default=None)
 
-        # track all processed and requeued messages
-        if command in (b'FIN', b'REQ', 'FIN', 'REQ'):
-            self._in_flight = max(0,  self._in_flight - 1)
-        return fut
+        if not self._reader:
+            self._reader = asyncio.StreamReader(limit=consts.MAX_CHUNK_SIZE,
+                                                loop=self._loop)
 
-    @property
-    def in_flight(self):
-        return self._in_flight
+        protocol = asyncio.StreamReaderProtocol(self._reader,
+                                                loop=self._loop)
 
-    @property
-    def endpoint(self):
-        return "tcp://{}:{}".format(self._host, self._port)
+        if tls:
+            kwargs.update({
+                'server_hostname': self._host,
+                'ssl': ssl.SSLContext(ssl.PROTOCOL_TLSv1)
+            })
 
-    @property
-    def closed(self):
-        """True if connection is closed."""
-        closed = self._closing or self._closed
-        if not closed and self._reader and self._reader.at_eof():
-            self._closing = closed = True
-            self._loop.call_soon(self._do_close, None)
-        return closed
+            # if not kwargs.get('sock'):
+            #     raise RuntimeError('transport does not provide a raw socket')
 
-    @property
-    def queue(self):
-        return self._queue
+        transport, _ = await self._loop.create_connection(lambda: protocol,
+                                                          **kwargs)
 
-    def close(self):
-        """Close connection."""
-        self._do_close()
-
-    async def identify(self, **config):
-        # TODO: add config validator
-        data = json.dumps(config)
-        resp = await self.execute(
-            b'IDENTIFY', data=data, cb=self._start_upgrading)
-        if resp in (b'OK', 'OK'):
-            self._finish_upgrading()
-            return resp
-        resp_config = json.loads(resp.decode('utf-8'))
-        fut = None
-        if resp_config.get('tls_v1'):
-            await self._upgrade_to_tls()
-
-        if resp_config.get('snappy'):
-            fut = self._upgrade_to_snappy()
-        elif resp_config.get('deflate'):
-            fut = self._upgrade_to_deflate()
-        self._finish_upgrading()
-        if fut:
-            ok = await fut
-            assert ok == b'OK'
-        return resp
+        self._writer = asyncio.StreamWriter(transport, protocol,
+                                            self._reader, self._loop)
 
     def _do_close(self, exc=None):
         if exc:
-            logger.error("Connection closed with error: {}".format(exc))
+            logger.error('connection closed with error: %s', exc)
+
         if self._closed:
             return
+
         self._closed = True
-        self._closing = False
         self._writer.transport.close()
         self._reader_task.cancel()
 
-    def _send_magic(self):
-        self._writer.write(consts.MAGIC_V2)
-
-    def _pulse(self):
-        nop = self._parser.encode_command(b'NOP')
-        self._writer.write(nop)
-
     async def _upgrade_to_tls(self):
         self._reader_task.cancel()
-        transport = self._writer.transport
-        transport.pause_reading()
-        raw_sock = transport.get_extra_info('socket', default=None)
-        if raw_sock is None:
-            raise RuntimeError("Transport does not expose socket instance")
-        ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
 
-        self._reader, self._writer = await asyncio.open_connection(
-            sock=raw_sock, ssl=ssl_context, loop=self._loop,
-            server_hostname=self._host)
-        bin_ok = await self._reader.readexactly(10)
-        if bin_ok != consts.BIN_OK:
-            raise RuntimeError('Upgrade to TLS failed, got: {}'.format(bin_ok))
-        self._reader_task = asyncio.Task(self._read_data(), loop=self._loop)
-        self._reader_task.add_done_callback(self._on_reader_task_stopped)
+        await self._establish_connection(tls=True)
 
-    def _on_reader_task_stopped(self, future):
-        exc = future.exception()
-        logger.error('DONE: TASK {}'.format(exc))
+        response = await self._reader.readexactly(10)
+        if response != consts.BIN_OK:
+            raise RuntimeError('upgrade to TLS failed, received: ' +
+                               str(response))
 
-    def _upgrade_to_snappy(self):
-        self._parser = SnappyReader(self._parser.buffer)
-        fut = asyncio.Future(loop=self._loop)
-        self._cmd_waiters.append((fut, None))
-        return fut
+        self._reader_task = self._loop.create_task(self._read_data)
+        # self._reader_task.add_done_callback(self._on_reader_task_stopped)
 
-    def _upgrade_to_deflate(self):
-        self._parser = DeflateReader(self._parser.buffer)
-        fut = asyncio.Future(loop=self._loop)
-        self._cmd_waiters.append((fut, None))
-        return fut
+    def _change_parser_cls(self, cls):
+        self._parser = cls(self._parser.buffer)
+
+        future = asyncio.Future(loop=self._loop)
+        self._cmd_waiters.append((future, None))
+
+        return future
+
+    # def _on_reader_task_stopped(self, future):
+    #     exc = future.exception()
+    #     logger.error('DONE: TASK %s', exc)
 
     async def _read_data(self):
-        """Response reader task."""
-        is_canceled = False
+        ''' Response reader loop.
+        '''
+        is_cancelled = False
+
         while not self._reader.at_eof():
             try:
                 data = await self._reader.read(52)
+
             except asyncio.CancelledError:
-                is_canceled = True
-                logger.debug('Task is canceled')
+                is_cancelled = True
+                logger.debug('reader task was cancelled')
                 break
+
             except Exception as exc:
                 logger.exception(exc)
-                logger.debug("Reader task stopped due to: {}".format(exc))
+                logger.debug('reader task stopped due to: %s',
+                             exc, exc_info=1)
                 break
-            self._parser.feed(data)
-            not self._is_upgrading and self._read_buffer()
 
-        if is_canceled:
+            self._parser.feed(data)
+
+            if not self._is_upgrading:
+                self._read_buffer()
+
+        if is_cancelled:
             # useful during update to TLS, task canceled but connection
             # should not be closed
             return
-        self._closing = True
+
+        # self._closing = True
         self._loop.call_soon(self._do_close, None)
 
     def _parse_data(self):
         try:
             obj = self._parser.gets()
+
         except ProtocolError as exc:
-            # ProtocolError is fatal
-            # so connection must be closed
+            # ProtocolError is fatal, connection must be closed
             logger.exception(exc)
-            self._closing = True
+            logger.error('fatal error, closing %s', self)
+
+            # self._closing = True
             self._loop.call_soon(self._do_close, exc)
-            logger.error('ProtocolError is fatal')
             return
-        else:
-            if obj is False:
-                return False
-            logger.debug("got nsq data: %s", obj)
-            resp_type, resp = obj
-            hb = consts.HEARTBEAT
-            # print(resp_type, resp)
-            if resp_type == consts.FRAME_TYPE_RESPONSE and resp == hb:
-                self._pulse()
-            elif resp_type == consts.FRAME_TYPE_RESPONSE:
-                waiter, cb = self._cmd_waiters.popleft()
-                if not waiter.cancelled():
-                    waiter.set_result(resp)
-                    cb is not None and cb(resp)
-            elif resp_type == consts.FRAME_TYPE_ERROR:
-                waiter, cb = self._cmd_waiters.popleft()
-                error = make_error(*resp)
-                if not waiter.cancelled():
-                    waiter.set_result(resp)
-                    cb is not None and cb(resp)
-            elif resp_type == consts.FRAME_TYPE_MESSAGE:
 
-                # track number in flight messages
-                self._in_flight += 1
+        if obj is False:
+            return obj
 
-                ts, att, msg_id, body = resp
-                self._on_message_hook(ts, att, msg_id, body)
-                # self._queue.put_nowait(msg)
-            return True
+        logger.debug('got nsq data: %s', obj)
 
-    def _on_message_hook(self, ts, att, msg_id, body):
-        msg = NsqMessage(ts, att, msg_id, body, self)
-        if self._on_message:
+        resp_type, resp = obj
+
+        if resp_type == consts.FRAME_TYPE_MESSAGE:
+            # track number in flight messages
+            self._in_flight += 1
+
+            timestamp, attempts, message_id, body = resp
+
+            self._on_message_hook(timestamp, attempts, message_id, body)
+
+        if resp_type == consts.FRAME_TYPE_ERROR:
+            code, message = resp
+
+            logger.error('nsqd error: %s, %s', code, message)
+
+            error = ERROR_CODES[code]
+
+            if error.fatal:
+                raise error
+
+        if resp_type == consts.FRAME_TYPE_RESPONSE:
+            if resp == consts.HEARTBEAT:
+                self._execute(consts.NOP)
+
+            else:
+                future, callback = self._cmd_waiters.popleft()
+
+                if not future.cancelled():
+                    future.set_result(resp)
+
+                    if callback is not None:
+                        callback(resp)
+
+        return True
+
+    def _execute(self, command, *args, data=None, encode=True):
+        if encode:
+            command = self._parser.encode_command(command, *args, data=data)
+
+        logger.debug('execute command %s', command)
+        self._writer.write(command)
+
+    def _on_message_hook(self, timestamp, attempts, message_id, body):
+        msg = NsqMessage(timestamp, attempts, message_id, body, self)
+
+        if self._on_message is not None:
             msg = self._on_message(msg)
+
         self._queue.put_nowait(msg)
 
     def _read_buffer(self):
@@ -250,12 +230,132 @@ class NsqConnection:
         while is_continue:
             is_continue = self._parse_data()
 
-    def _start_upgrading(self, resp=None):
+    def _start_upgrading(self, *_):
         self._is_upgrading = True
 
-    def _finish_upgrading(self, resp=None):
+    def _finish_upgrading(self, *_):
         self._read_buffer()
         self._is_upgrading = False
 
     def __repr__(self):
-        return '<NsqConnection: {}:{}'.format(self._host, self._port)
+        return '<NsqConnection: {}:{}>'.format(self._host, self._port)
+
+    # Public methods below.
+
+    async def connect(self):
+        ''' Establish a connection with `nsqd`: set up streams, launch
+        a reader loop, send the magic packet.
+
+        This is the first method you call do after creating the connection
+        instance.
+        '''
+        if not (self._reader and self._writer):
+            await self._establish_connection()
+
+        # start reader loop
+        self._reader_task = self._loop.create_task(self._read_data())
+
+        # send magic packet
+        self._execute(consts.MAGIC_V2, encode=False)
+
+    async def identify(self, **config):
+        ''' Negotiate features with `nsqd` and tune the connection
+        accordingly.
+
+        Args:
+            **config: local configuration
+        '''
+        # TODO: add config validator
+        resp = await self.execute(consts.IDENTIFY,
+                                  data=json.dumps(config),
+                                  callback=self._start_upgrading)
+
+        future = None
+
+        if resp != consts.OK:
+            resp_config = json.loads(resp.decode('utf-8'))
+
+            if resp_config.get('tls_v1'):
+                await self._upgrade_to_tls()
+
+            if resp_config.get('snappy'):
+                future = self._change_parser_cls(SnappyReader)
+
+            elif resp_config.get('deflate'):
+                future = self._change_parser_cls(DeflateReader)
+
+        self._finish_upgrading()
+
+        if future:
+            assert await future == consts.OK
+
+        return resp
+
+    def execute(self, command: bytes, *args, data=None, callback=None):
+        ''' Execute a NSQ command, schedule callback if provided.
+
+        Args:
+            command: a NSQ command
+            *args: command arguments
+            data: (optional) request body
+            callback: (optional) callback function to pass the command
+                result to
+        '''
+        assert self._reader and not self._reader.at_eof(), \
+            'connection closed or corrupted'
+
+        if command is None:
+            raise ValueError('command must not be None')
+
+        if None in set(args):
+            raise ValueError('args must not contain None')
+
+        future = asyncio.Future(loop=self._loop)
+
+        if command in (consts.NOP, consts.FIN, consts.RDY,
+                       consts.REQ, consts.TOUCH):
+            future.set_result(consts.OK)
+
+        else:
+            self._cmd_waiters.append((future, callback))
+
+        self._execute(command, *args, data=data)
+
+        # track all processed and requeued messages
+        # if command in (b'FIN', b'REQ', 'FIN', 'REQ'):
+        if command in (consts.FIN, consts.REQ):
+            self._in_flight = max(0, self._in_flight - 1)
+
+        return future
+
+    @property
+    def in_flight(self):
+        ''' Count of messages currently in flight.
+        '''
+        return self._in_flight
+
+    @property
+    def endpoint(self):
+        ''' Full `nsqd` address.
+        '''
+        return "tcp://{}:{}".format(self._host, self._port)
+
+    @property
+    def closed(self):
+        ''' True if connection is closed.
+        '''
+        if not self._closed and self._reader and self._reader.at_eof():
+            self._loop.call_soon(self._do_close, None)
+
+        return self._closed
+
+    @property
+    def queue(self):
+        ''' Queue used to store received messages.
+        '''
+        return self._queue
+
+    def close(self):
+        ''' Close the connection.
+        '''
+        self._do_close()

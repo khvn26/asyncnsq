@@ -9,7 +9,7 @@ import snappy
 
 from . import consts
 from .exceptions import ProtocolError
-from .utils import _convert_to_bytes
+from .utils import convert_to_bytes
 
 
 __all__ = ['Reader', 'DeflateReader', 'SnappyReader']
@@ -61,7 +61,8 @@ class BaseCompressReader(BaseReader):
         if not chunk:
             return
         uncompressed = self.decompress(chunk)
-        uncompressed and self._parser.feed(uncompressed)
+        if uncompressed:
+            self._parser.feed(uncompressed)
 
     def gets(self):
         return self._parser.gets()
@@ -96,7 +97,9 @@ class SnappyReader(BaseCompressReader):
         self._parser = Reader()
         self._decompressor = snappy.StreamDecompressor()
         self._compressor = snappy.StreamCompressor()
-        buffer and self.feed(buffer)
+
+        if buffer is not None:
+            self.feed(buffer)
 
     def compress(self, data):
         compressed = self._compressor.add_chunk(data, compress=True)
@@ -107,8 +110,8 @@ class SnappyReader(BaseCompressReader):
 
 
 def _encode_body(data):
-    _data = _convert_to_bytes(data)
-    result = struct.pack('>l', len(_data)) + _data
+    _data = convert_to_bytes(data)
+    result = struct.pack('!l', len(_data)) + _data
     return result
 
 
@@ -120,7 +123,9 @@ class Reader(BaseReader):
         self._payload_size = None
         self._is_header = False
         self._frame_type = None
-        buffer and self.feed(buffer)
+
+        if buffer is not None:
+            self.feed(buffer)
 
     @property
     def buffer(self):
@@ -137,7 +142,7 @@ class Reader(BaseReader):
     def gets(self):
         buffer_size = len(self._buffer)
         if not self._is_header and buffer_size >= consts.DATA_SIZE:
-            size = struct.unpack('>l', self._buffer[:consts.DATA_SIZE])[0]
+            size = struct.unpack('!l', self._buffer[:consts.DATA_SIZE])[0]
             self._payload_size = size
             self._is_header = True
 
@@ -146,7 +151,7 @@ class Reader(BaseReader):
 
             start, end = consts.DATA_SIZE, consts.DATA_SIZE + consts.FRAME_SIZE
 
-            self._frame_type = struct.unpack('>l', self._buffer[start:end])[0]
+            self._frame_type = struct.unpack('!l', self._buffer[start:end])[0]
             resp = self._parse_payload()
             self._reset()
             return resp
@@ -168,7 +173,7 @@ class Reader(BaseReader):
         elif response_type == consts.FRAME_TYPE_MESSAGE:
             response = self._unpack_message()
         else:
-            raise ProtocolError()
+            raise ProtocolError('unknown response type {}'.format(response_type))
         return response_type, response
 
     def _unpack_error(self):
@@ -188,26 +193,26 @@ class Reader(BaseReader):
         start = consts.DATA_SIZE + consts.FRAME_SIZE
         end = consts.DATA_SIZE + self._payload_size
         msg_len = end - start - consts.MSG_HEADER
-        fmt = '>qh16s{}s'.format(msg_len)
+        fmt = '!qh16s{}s'.format(msg_len)
         payload = struct.unpack(fmt, self._buffer[start:end])
         timestamp, attempts, msg_id, body = payload
         return timestamp, attempts, msg_id, body
 
     def encode_command(self, cmd, *args, data=None):
         """XXX"""
-        _cmd = _convert_to_bytes(cmd.upper().strip())
-        _args = [_convert_to_bytes(a) for a in args]
+        _cmd = convert_to_bytes(cmd.upper().strip())
+        _args = [convert_to_bytes(a) for a in args]
         body_data, params_data = b'', b''
 
-        if len(_args):
+        if _args:
             params_data = b' ' + b' '.join(_args)
 
         if data and isinstance(data, (list, tuple)):
             data_encoded = [_encode_body(part) for part in data]
             num_parts = len(data_encoded)
-            payload = struct.pack('>l', num_parts) + b''.join(data_encoded)
-            body_data = struct.pack('>l', len(payload)) + payload
+            payload = struct.pack('!l', num_parts) + b''.join(data_encoded)
+            body_data = struct.pack('!l', len(payload)) + payload
         elif data:
             body_data = _encode_body(data)
 
-        return b''.join((_cmd, params_data, consts.NL, body_data))
+        return b''.join((_cmd, params_data, consts.NEWLINE, body_data))

@@ -4,7 +4,8 @@ from collections import deque
 import time
 import logging
 from asyncnsq.http import NsqLookupd
-from asyncnsq.nsq import create_nsq
+from asyncnsq.http.exceptions import NsqHttpException
+from asyncnsq.nsq import Nsq
 from asyncnsq.utils import RdyControl
 
 logger = logging.getLogger(__name__)
@@ -18,16 +19,16 @@ class NsqConsumer:
 
         self._nsqd_tcp_addresses = nsqd_tcp_addresses or []
         self._lookupd_http_addresses = lookupd_http_addresses or []
-
         self._max_in_flight = max_in_flight
+
         self._loop = loop or asyncio.get_event_loop()
+
         self._queue = asyncio.Queue(loop=self._loop)
 
         self._connections = {}
 
         self._idle_timeout = 10
 
-        self._rdy_control = None
         self._max_in_flight = max_in_flight
 
         self._is_subscribe = False
@@ -38,42 +39,64 @@ class NsqConsumer:
                                        max_in_flight=self._max_in_flight,
                                        loop=self._loop)
 
-    async def connect(self):
-        if self._lookupd_http_addresses:
-            """
-            because lookupd must find a topic to find nsqds
-            so, lookupd connect changed in to subscribe func
-            """
-            pass
-        if self._nsqd_tcp_addresses:
-            for host, port in self._nsqd_tcp_addresses:
-                conn = await create_nsq(host, port, queue=self._queue,
-                                        loop=self._loop)
-            self._connections[conn.id] = conn
-            self._rdy_control.add_connections(self._connections)
+    async def _connect(self, *addresses):
+        addresses = addresses or self._nsqd_tcp_addresses
 
-    async def _poll_lookupd(self, host, port):
+        if not addresses:
+            return
+
+        conn_coros = []
+
+        for host, port in addresses:
+            conn = Nsq(host, port, loop=self._loop, queue=self._queue)
+            conn_coros.append(conn.connect())
+            self._connections[conn.id] = conn
+
+        await asyncio.gather(*conn_coros)
+
+        self._rdy_control.add_connections(self._connections)
+
+    async def connect(self):
+        await self._connect()
+
+    async def _poll_lookupd(self, *addresses):
+        if not self.topic:
+            return
+
+        addresses = addresses or self._lookupd_http_addresses
+
+        if not addresses:
+            return
+
+        host, port = random.choice(addresses)
+
+        nsqd_addresses = []
+
         nsqlookup_conn = NsqLookupd(host, port, loop=self._loop)
+
         try:
             res = await nsqlookup_conn.lookup(self.topic)
             logger.debug('lookupd response')
             logger.debug(res)
-        except Exception as tmp:
-            logger.error(tmp)
-            logger.exception(tmp)
+
+        except NsqHttpException as exc:
+            logger.error(exc)
+            logger.exception(exc, exc_info=1)
 
         for producer in res['producers']:
-            host = '127.0.0.1'
+            # host, port = producer['127.0.0.1'], producer['tcp_port']
             # producer['broadcast_address']
+
+            host = producer.get('broadcast_address',
+                                producer.get('address'))
+
             port = producer['tcp_port']
-            tmp_id = "tcp://{}:{}".format(host, port)
+
+            tmp_id = 'tcp://{}:{}'.format(host, port)
             if tmp_id not in self._connections:
-                logger.debug(('host, port', host, port))
-                conn = await create_nsq(host, port, queue=self._queue,
-                                        loop=self._loop)
-                logger.debug(('conn.id:', conn.id))
-                self._connections[conn.id] = conn
-                self._rdy_control.add_connection(conn)
+                nsqd_addresses.append((host, port))
+
+        await self._connect(*nsqd_addresses)
         await nsqlookup_conn.close()
 
     # async def lookupd_task_done_sub(self, topic, channel):
@@ -84,11 +107,17 @@ class NsqConsumer:
 
     async def subscribe(self, topic, channel):
         self.topic = topic
-        self._is_subscribe = True
+
         if self._lookupd_http_addresses:
-            await self._lookupd()
-        for conn in self._connections.values():
-            result = await conn.sub(topic, channel)
+            await self._poll_lookupd()
+
+        self._is_subscribe = True
+
+        sub_coros = (conn.sub(topic, channel)
+                     for conn in self._connections.values())
+
+        await asyncio.gather(*sub_coros)
+
         self._redistribute_task = self._loop.create_task(self._redistribute())
 
     def wait_messages(self):
@@ -107,8 +136,8 @@ class NsqConsumer:
             yield await self._queue.get()
 
     def is_starved(self):
-        conns = self._connections.values()
-        return any(conn.is_starved() for conn in conns)
+        return any(conn.is_starved()
+                   for conn in self._connections.values())
 
     async def _redistribute(self):
         while self._is_subscribe:
@@ -116,6 +145,22 @@ class NsqConsumer:
             await asyncio.sleep(self._redistribute_timeout,
                                 loop=self._loop)
 
-    async def _lookupd(self):
-        host, port = random.choice(self._lookupd_http_addresses)
-        result = await self._poll_lookupd(host, port)
+    # async def _lookupd(self):
+    #     host, port = random.choice(self._lookupd_http_addresses)
+    #     result = await self._poll_lookupd(host, port)
+
+    async def close(self):
+        cls_coros = []
+
+        for conn in self._connections.values():
+            cls_coros.append(conn.cls())
+
+        try:
+            await asyncio.gather(*cls_coros)
+
+        except Exception as exc:
+            logger.error(exc, exc_info=1)
+
+        finally:
+            self._rdy_control.remove_all()
+            self._is_subscribe = False

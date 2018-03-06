@@ -1,3 +1,4 @@
+from collections import defaultdict
 
 class NSQException(Exception):
     """XXX"""
@@ -92,7 +93,7 @@ class NSQTouchFailed(NSQErrorCode):
     fatal = False
 
 
-ERROR_CODES = {
+ERROR_CODES = defaultdict(lambda: NSQFrameError, {
     b'E_INVALID': NSQInvalid,
     b'E_BAD_BODY': NSQBadBody,
     b'E_BAD_TOPIC': NSQBadTopic,
@@ -109,13 +110,9 @@ ERROR_CODES = {
     b'E_REQUEUE_FAILED': NSQRequeueFailed,
     b'E_REQ_FAILED': NSQRequeueFailed,
     b'E_TOUCH_FAILED': NSQTouchFailed
-}
+})
 
 # https://groups.google.com/forum/#!msg/nsq-users/VSxdPtw2ZmY/kmQJJhZe4wEJ
 # E_TOUCH_FAILED, fatal
 # E_REQ_FAILED fatal
 # E_FIN_FAILED
-
-
-def make_error(code, error_message):
-    return ERROR_CODES.get(code, NSQErrorCode)(error_message)

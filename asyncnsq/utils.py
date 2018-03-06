@@ -2,7 +2,11 @@ import asyncio
 import random
 import re
 import time
+
+from struct import pack
 from urllib.parse import urlparse
+
+from .log import logger
 
 
 TOPIC_NAME_RE = re.compile(r'^[\.a-zA-Z0-9_-]+$')
@@ -36,7 +40,7 @@ def valid_channel_name(channel):
     return bool(CHANNEL_NAME_RE.match(channel))
 
 
-_converters_to_bytes_map = {
+_CONVERTERS_TO_BYTES_MAP = {
     bytes: lambda val: val,
     bytearray: lambda val: val,
     str: lambda val: val.encode('utf-8'),
@@ -45,34 +49,55 @@ _converters_to_bytes_map = {
 }
 
 
-_converters_to_str_map = {
-    str: lambda val: val,
-    bytearray: lambda val: bytes(val).decode('utf-8'),
-    bytes: lambda val: val.decode('utf-8'),
-    int: lambda val: str(val),
-    float: lambda val: str(val),
-}
+# _converters_to_str_map = {
+#     str: lambda val: val,
+#     bytearray: lambda val: bytes(val).decode('utf-8'),
+#     bytes: lambda val: val.decode('utf-8'),
+#     int: lambda val: str(val),
+#     float: lambda val: str(val),
+# }
 
 
-def _convert_to_bytes(value):
-    if type(value) in _converters_to_bytes_map:
-        converted_value = _converters_to_bytes_map[type(value)](value)
+def convert_to_bytes(value):
+    _type = type(value)
+    if _type in _CONVERTERS_TO_BYTES_MAP:
+        converted_value = _CONVERTERS_TO_BYTES_MAP[_type](value)
     else:
         raise TypeError("Argument {!r} expected to be of bytes,"
                         " str, int or float type".format(value))
     return converted_value
 
 
-def _convert_to_str(value):
-    if type(value) in _converters_to_str_map:
-        converted_value = _converters_to_str_map[type(value)](value)
-    else:
-        raise TypeError("Argument {!r} expected to be of bytes,"
-                        " str, int or float type".format(value))
-    return converted_value
+# def _convert_to_str(value):
+#     if type(value) in _converters_to_str_map:
+#         converted_value = _converters_to_str_map[type(value)](value)
+#     else:
+#         raise TypeError("Argument {!r} expected to be of bytes,"
+#                         " str, int or float type".format(value))
+#     return converted_value
 
 
-class MaxRetriesExided(Exception):
+def _len_to_4b(inp):
+    return pack('>l', len(inp))
+
+
+def encode_msgs(*messages):
+    ''' Encode a string sequence in accordance with nsq mpub binary
+    format.
+    '''
+    # [ 4-byte num messages ]
+    arr = bytearray(_len_to_4b(messages))
+
+    for msg in messages:
+        msg = msg.encode()
+
+        # [ 4-byte message #n size ][ N-byte binary data ]
+        arr += _len_to_4b(msg) + msg
+
+    return bytes(arr)
+
+
+class MaxRetriesExceeded(Exception):
     pass
 
 
@@ -100,7 +125,7 @@ def retry_iterator(init_delay=0.1, max_delay=10.0, factor=2.7182818284590451,
         delay = min(delay, max_delay) if max_delay else delay
         yield delay
     else:
-        raise MaxRetriesExided()
+        raise MaxRetriesExceeded()
 
 
 REDISTRIBUTE = 0
@@ -124,14 +149,13 @@ class RdyControl:
 
         self._distributor_task = self._loop.create_task(self._distributor())
 
-    def add_connections(self, connections):
-        self._connections = connections
-        for conn in self._connections.values():
-            conn._on_rdy_changed_cb = self.rdy_changed
-
     def add_connection(self, connection):
-        connection._on_rdy_changed_cb = self.rdy_changed
+        connection.set_rdy_callback(self.rdy_changed)
         self._connections[connection.id] = connection
+
+    def add_connections(self, connections):
+        for conn in connections.values():
+            self.add_connection(conn)
 
     def rdy_changed(self, conn_id):
         self._cmd_queue.put_nowait((CHANGE_CONN_RDY, (conn_id,)))
@@ -142,18 +166,29 @@ class RdyControl:
     async def _distributor(self):
         while self._is_working:
             cmd, args = await self._cmd_queue.get()
+
             if cmd == REDISTRIBUTE:
                 await self._redistribute_rdy_state()
+
             elif cmd == CHANGE_CONN_RDY:
                 await self._update_rdy(*args)
-            else:
-                RuntimeError("Should never be here")
 
-    def remove_connection(self, conn):
-        self._connections.pop(conn.id)
+            else:
+                raise RuntimeError('unexpected RDY redistribution cmd:'
+                                   ' {}'.format(cmd))
+
+    def remove_connection(self, connection):
+        connection.set_rdy_callback(None)
+        self._connections.pop(connection.id)
 
     def remove_all(self):
-        self._connections = {}
+        for conn in tuple(self._connections.values()):
+            self.remove_connection(conn)
+
+    def stop(self):
+        self._is_working = False
+        self.remove_all()
+        self._distributor_task.cancel()
 
     async def _redistribute_rdy_state(self):
         # We redistribute RDY counts in a few cases:
@@ -169,6 +204,7 @@ class RdyControl:
         # producers when we're unable (by configuration or backoff) to provide
         # a RDY count
         # of (at least) 1 to all of our connections.
+        # logger.debug('RDY_REDIST._redistribute_rdy_state: starting')
 
         connections = self._connections.values()
 
@@ -188,14 +224,20 @@ class RdyControl:
         rdy_coros += [conn.rdy(1) for conn in random_connections]
 
         await asyncio.gather(*rdy_coros)
+        # logger.debug('RDY_REDIST._redistribute_rdy_state: done')
 
-    async def _update_rdy(self, conn_id):
-        conn = self._connections[conn_id]
+    async def _update_rdy(self, *conn_ids):
+        conns = (self._connections[conn_id] for conn_id in conn_ids)
 
-        if conn.rdy_state > int(conn._last_rdy * 0.25):
-            return
+        rdy_coros = []
 
-        rdy_state = max(1, self._max_in_flight /
-                        max(1, len(self._connections)))
+        for conn in conns:
+            if conn.rdy_state > int(conn.last_rdy * 0.25):
+                continue
 
-        await conn.rdy(int(rdy_state))
+            rdy_state = int(max(1, self._max_in_flight /
+                                max(1, len(self._connections))))
+
+            rdy_coros.append(conn.rdy(rdy_state))
+
+        await asyncio.gather(*rdy_coros)

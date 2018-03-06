@@ -10,7 +10,6 @@ class AbstractSelector(metaclass=abc.ABCMeta):
 
 
 class RandomSelector(AbstractSelector):
-
     def select(self, connections):
         return random.choice(connections)
 
