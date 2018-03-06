@@ -17,7 +17,15 @@ install:
     # - pip install pep8
     - pip install -e .
 
+before_script:
+    - nsqlookupd &
+    - nsqd --lookupd-tcp-address=127.0.0.1:4160 --verbose &
+    - sleep 0.5
+
 script:
     # - pyflakes asyncnsq tests
     # - pep8 asyncnsq tests
     - python runtests.py -v
+
+after_script:
+    - kill $(jobs -p)
