@@ -1,23 +1,19 @@
-import re
 import os.path
+import re
 import sys
-from setuptools import setup, find_packages
+
+from setuptools import find_packages, setup
+
+install_requires = ['aiohttp']
 
 
-install_requires = []
-
-PY_VER = sys.version_info
-
-if PY_VER >= (3, 4):
-    pass
-elif PY_VER >= (3, 3):
-    install_requires.append('asyncio')
-else:
-    raise RuntimeError("asyncnsq doesn't support Python version prior 3.3")
+assert sys.version_info >= (3, 5), 'asyncnsq requires Python 3.5 or later'
 
 
 def read(*parts):
-    with open(os.path.join(*parts), 'rt') as f:
+    path = os.path.abspath(__file__)
+    dir_path = os.path.dirname(path)    
+    with open(os.path.join(dir_path, *parts), 'rt') as f:
         return f.read().strip()
 
 
@@ -39,8 +35,8 @@ classifiers = [
     'Development Status :: 4 - Beta',
     'Programming Language :: Python',
     'Programming Language :: Python :: 3',
-    'Programming Language :: Python :: 3.4',
     'Programming Language :: Python :: 3.5',
+    'Programming Language :: Python :: 3.6',
     'Operating System :: POSIX',
     'Environment :: Web Environment',
     'Intended Audience :: Developers',
@@ -60,5 +56,4 @@ setup(name='asyncnsq',
       license="MIT",
       packages=find_packages(exclude=["tests"]),
       install_requires=install_requires,
-      include_package_data=True,
-      )
+      include_package_data=True)
