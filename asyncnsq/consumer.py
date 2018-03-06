@@ -130,12 +130,8 @@ class NsqConsumer:
             yield fut
 
     if PY_36:
-        async def messages(self):
-            if not self._is_subscribe:
-                raise ValueError('You must subscribe to the topic first')
-
-            while self._is_subscribe:
-                yield await self._queue.get()
+        from .consumer_async_iter import messages
+        messages = messages
 
     def is_starved(self):
         return any(conn.is_starved()
