@@ -6,10 +6,9 @@ def main():
 
     loop = asyncio.get_event_loop()
 
-    @asyncio.coroutine
-    def go():
-        nsq = yield from create_connection(port=4150, loop=loop)
-        resp = yield from nsq.identify(
+    async def go():
+        nsq = await create_connection(port=4150, loop=loop)
+        resp = await nsq.identify(
             **{
                 "client_id": "metrics_increment",
                 "hostname": "localhost",
@@ -20,21 +19,23 @@ def main():
                 # "sample_rate": 50,
                 "deflate": True, "deflate_level": 6,
             })
-        # resp = yield from nsq.execute(b'IDENTIFY',
+        # resp = await nsq.execute(b'IDENTIFY',
         # data=json.dumps({"tls_v1": True}))
 
         print(resp)
         for i in range(0, 100):
             d = b'test_msg: ' + bytes([i])
             print('send ', i, '-----', d)
-            yield from nsq.execute(b'PUB', b'foo', data=d)
+            await nsq.execute(b'PUB', b'foo', data=d)
 
-        yield from nsq.execute(b'SUB', b'foo', b'bar')
+        await nsq.execute(b'SUB', b'foo', b'bar')
 
         for i in range(0, 50):
-            yield from nsq.execute(b'RDY', b'1')
-            msg = yield from nsq._msq_queue.get()
-            yield from nsq.execute(b'FIN', msg.message_id)
+            await nsq.execute(b'RDY', b'1')
+
+            msg = await nsq._msq_queue.get()
+
+            await nsq.execute(b'FIN', msg.message_id)
 
     loop.run_until_complete(go())
 
