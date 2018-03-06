@@ -55,4 +55,7 @@ coverage.xml
 # Sphinx documentation
 docs/_build/
 
+# VS Code
+.vscode/
+
 *.dat
