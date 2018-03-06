@@ -1,10 +1,10 @@
 import unittest
+
 from asyncnsq.exceptions import ProtocolError
 from asyncnsq.protocol import Reader
 
 
 class ParserTest(unittest.TestCase):
-
     def setUp(self):
         self.conn = object()
         self.parser = Reader()
@@ -87,7 +87,6 @@ class ParserTest(unittest.TestCase):
 
 
 class CommandEncoderTest(unittest.TestCase):
-
     def setUp(self):
         self.conn = object()
         self.parser = Reader()
@@ -115,7 +114,7 @@ class CommandEncoderTest(unittest.TestCase):
         self.assertEqual(cmd_with_float, b'PUB foo\n\x00\x00\x00\x043.14')
         self.assertEqual(cmd_with_bytearray, b'PUB foo\n\x00\x00\x00\x03foo')
 
-    def test_pub_not_converatble_payload(self):
+    def test_pub_not_convertable_payload(self):
         with self.assertRaises(TypeError):
             self.parser.encode_command(b'PUB', b'foo', data=object())
 
