@@ -1,4 +1,4 @@
-__version__ = '0.3.6'
+__version__ = '0.3.9'
 
 import asyncio
 from .utils import get_host_and_port
@@ -9,8 +9,8 @@ from .consumer import NsqConsumer
 async def create_nsq_producer(host='127.0.0.1', port=4150, loop=None, queue=None,
                               heartbeat_interval=30000, feature_negotiation=True,
                               tls_v1=False, snappy=False, deflate=False, deflate_level=6,
-                              consumer=False, sample_rate=0):
-    """"
+                              sample_rate=0):
+    '''
     initial function to get producer
     param: host: host addr with no protocol. 127.0.0.1 
     param: port: host port 
@@ -18,7 +18,7 @@ async def create_nsq_producer(host='127.0.0.1', port=4150, loop=None, queue=None
     param: heartbeat_interval: heartbeat interval with nsq, set -1 to disable nsq heartbeat check
     params: snappy: snappy compress
     params: deflate: deflate compress  can't set True both with snappy
-    """
+    '''
     # TODO: add parameters type and value validation
     host, tmp_port = get_host_and_port(host)
     if not port:
@@ -30,20 +30,20 @@ async def create_nsq_producer(host='127.0.0.1', port=4150, loop=None, queue=None
                feature_negotiation=feature_negotiation,
                tls_v1=tls_v1, snappy=snappy, deflate=deflate,
                deflate_level=deflate_level,
-               sample_rate=sample_rate, consumer=consumer, loop=loop)
+               sample_rate=sample_rate, loop=loop)
     await conn.connect()
     return conn
 
 
 async def create_nsq_consumer(host=None, loop=None,
                               max_in_flight=42, lookupd_http_addresses=None):
-    """"
+    '''
     initial function to get consumer
-    param: host: host addr with no protocol. 127.0.0.1 
-    param: port: host port 
+    param: host: host addr with no protocol. 127.0.0.1
+    param: port: host port
     param: max_in_flight: number of messages get but not finish or req
     param: lookupd_http_addresses: heartbeat interval with nsq, set -1 to disable nsq heartbeat check
-    """
+    '''
     # TODO: add parameters type and value validation
     if host is None:
         host = ['tcp://127.0.0.1:4150']
