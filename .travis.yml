@@ -4,31 +4,20 @@ python:
     - 3.6
 
 env:
-    - NSQ_DOWNLOAD=nsq-0.2.30.linux-amd64.go1.2.1
-
-install:
-    - pip install simplejson
-    - export PYCURL_SSL_LIBRARY=openssl
-    - pip install pycurl
-    - sudo apt-get install libsnappy-dev
-    - pip install python-snappy
-    - wget http://bitly-downloads.s3.amazonaws.com/nsq/$NSQ_DOWNLOAD.tar.gz
-    - tar zxvf $NSQ_DOWNLOAD.tar.gz
-    - sudo cp $NSQ_DOWNLOAD/bin/nsqd $NSQ_DOWNLOAD/bin/nsqlookupd /usr/local/bin
+    - NSQ_DOWNLOAD=nsq-1.0.0-compat.linux-amd64.go1.8
 
 install:
     - sudo apt-get install libsnappy-dev
     - pip install python-snappy
-    - wget http://bitly-downloads.s3.amazonaws.com/nsq/$NSQ_DOWNLOAD.tar.gz
+    - wget https://s3.amazonaws.com/bitly-downloads/nsq/$NSQ_DOWNLOAD.tar.gz
     - tar zxvf $NSQ_DOWNLOAD.tar.gz
     - sudo cp $NSQ_DOWNLOAD/bin/nsqd $NSQ_DOWNLOAD/bin/nsqlookupd /usr/local/bin
 
-
-    - pip install pyflakes
-    - pip install pep8
+    # - pip install pyflakes
+    # - pip install pep8
     - pip install -e .
 
 script:
-    - pyflakes asyncnsq tests
-    - pep8 asyncnsq tests
+    # - pyflakes asyncnsq tests
+    # - pep8 asyncnsq tests
     - python runtests.py -v
