@@ -18,8 +18,8 @@ install:
     - pip install -e .
 
 before_script:
-    - nsqlookupd &
-    - nsqd --lookupd-tcp-address=127.0.0.1:4160 --verbose &
+    - nsqlookupd 2> /dev/null &
+    - nsqd --lookupd-tcp-address=127.0.0.1:4160 2> /dev/null &
     - sleep 0.5
 
 script:
