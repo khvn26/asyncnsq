@@ -13,7 +13,7 @@ from .protocol import DeflateReader, Reader, SnappyReader
 
 async def create_connection(host='localhost', port=4151, queue=None,
                             loop=None, on_message=None):
-    """XXX"""
+    '''XXX'''
     conn = NsqConnection(host, port, queue=queue,
                          loop=loop, on_message=on_message)
 
@@ -23,7 +23,7 @@ async def create_connection(host='localhost', port=4151, queue=None,
 
 
 class NsqConnection:
-    """XXX"""
+    '''XXX'''
 
     def __init__(self, host, port, *, reader=None, writer=None,
                  on_message=None, queue=None, loop=None):
@@ -50,10 +50,16 @@ class NsqConnection:
         self._closed = False
         ## number of received but not acked or req messages
         self._in_flight = 0
+        ## whether this connection uses TLS
+        self._tls = False
 
     # Private methods below.
 
-    async def _establish_connection(self, tls=False):
+    async def _establish_connection(self, *, 
+                                    tls=None,
+                                    limit=consts.MAX_CHUNK_SIZE):
+        tls = tls or self._tls
+
         transport = None
         kwargs = {
             'host': self._host,
@@ -64,10 +70,12 @@ class NsqConnection:
             transport = self._writer.transport
             transport.pause_reading()
 
-            kwargs['sock'] = transport.get_extra_info('socket', default=None)
+            sock = transport.get_extra_info('socket')
+            if sock:
+                kwargs = {'sock': sock}
 
         if not self._reader:
-            self._reader = asyncio.StreamReader(limit=consts.MAX_CHUNK_SIZE,
+            self._reader = asyncio.StreamReader(limit=limit,
                                                 loop=self._loop)
 
         protocol = asyncio.StreamReaderProtocol(self._reader,
@@ -90,7 +98,7 @@ class NsqConnection:
 
     def _do_close(self, exc=None):
         if exc:
-            logger.error('connection closed with error: %s', exc)
+            logger.error('connection closed with error: %s', exc, exc_info=1)
 
         if self._closed:
             return
@@ -100,9 +108,10 @@ class NsqConnection:
         self._reader_task.cancel()
 
     async def _upgrade_to_tls(self):
+        self._tls = True
         self._reader_task.cancel()
 
-        await self._establish_connection(tls=True)
+        await self._establish_connection()
 
         response = await self._reader.readexactly(10)
         if response != consts.BIN_OK:
@@ -155,7 +164,7 @@ class NsqConnection:
             return
 
         # self._closing = True
-        self._loop.call_soon(self._do_close, None)
+        self.close()
 
     def _parse_data(self):
         try:
@@ -164,11 +173,10 @@ class NsqConnection:
         except ProtocolError as exc:
             # ProtocolError is fatal, connection must be closed
             logger.exception(exc)
-            logger.error('fatal error, closing %s', self)
 
             # self._closing = True
-            self._loop.call_soon(self._do_close, exc)
-            return
+            self.close(exc)
+            return False
 
         if obj is False:
             return obj
@@ -267,12 +275,13 @@ class NsqConnection:
         '''
         # TODO: add config validator
         resp = await self.execute(consts.IDENTIFY,
-                                  data=json.dumps(config),
-                                  callback=self._start_upgrading)
+                                  data=json.dumps(config))
 
         future = None
 
         if resp != consts.OK:
+            self._start_upgrading()
+
             resp_config = json.loads(resp.decode('utf-8'))
 
             if resp_config.get('tls_v1'):
@@ -284,7 +293,7 @@ class NsqConnection:
             elif resp_config.get('deflate'):
                 future = self._change_parser_cls(DeflateReader)
 
-        self._finish_upgrading()
+            self._finish_upgrading()
 
         if future:
             assert await future == consts.OK
@@ -301,8 +310,7 @@ class NsqConnection:
             callback: (optional) callback function to pass the command
                 result to
         '''
-        assert self._reader and not self._reader.at_eof(), \
-            'connection closed or corrupted'
+        assert not self.closed, 'connection closed or corrupted'
 
         if command is None:
             raise ValueError('command must not be None')
@@ -345,7 +353,7 @@ class NsqConnection:
         ''' True if connection is closed.
         '''
         if not self._closed and self._reader and self._reader.at_eof():
-            self._loop.call_soon(self._do_close, None)
+            self.close()
 
         return self._closed
 
@@ -355,7 +363,8 @@ class NsqConnection:
         '''
         return self._queue
 
-    def close(self):
+    def close(self, exc=None):
         ''' Close the connection.
         '''
-        self._do_close()
+        # self._loop.call_soon(self._do_close, exc)
+        self._do_close(exc)

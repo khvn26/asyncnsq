@@ -1,8 +1,9 @@
-"""NSQ protocol parser.
+'''NSQ protocol parser.
 
 :see: http://nsq.io/clients/tcp_protocol_spec.html
-"""
+'''
 import abc
+import asyncio
 import struct
 import zlib
 import snappy
@@ -16,46 +17,53 @@ __all__ = ['Reader', 'DeflateReader', 'SnappyReader']
 
 
 class BaseReader(metaclass=abc.ABCMeta):
+    def __init__(self, buffer=None):
+        if buffer:
+            self.feed(buffer)
 
     @abc.abstractmethod   # pragma: no cover
     def feed(self, chunk):
-        """
+        '''
 
         :return:
-        """
+        '''
 
     @abc.abstractmethod  # pragma: no cover
     def gets(self):
-        """
+        '''
 
         :return:
-        """
+        '''
 
     @abc.abstractmethod   # pragma: no cover
     def encode_command(self, cmd, *args, data=None):
-        """
+        '''
 
         :return:
-        """
+        '''
 
 
 class BaseCompressReader(BaseReader):
+    def __init__(self, buffer=None):
+        self._parser = Reader()
+
+        super().__init__(buffer)
 
     @abc.abstractmethod  # pragma: no cover
     def compress(self, data):
-        """
+        '''
 
         :param data:
         :return:
-        """
+        '''
 
     @abc.abstractmethod  # pragma: no cover
     def decompress(self, chunk):
-        """
+        '''
 
         :param chunk:
         :return:
-        """
+        '''
 
     def feed(self, chunk):
         if not chunk:
@@ -69,18 +77,16 @@ class BaseCompressReader(BaseReader):
 
     def encode_command(self, cmd, *args, data=None):
         cmd = self._parser.encode_command(cmd, *args, data=data)
-        # print(cmd)
         return self.compress(cmd)
 
 
 class DeflateReader(BaseCompressReader):
-
     def __init__(self, buffer=None, level=6):
-        self._parser = Reader()
         wbits = -zlib.MAX_WBITS
         self._decompressor = zlib.decompressobj(wbits)
         self._compressor = zlib.compressobj(level, zlib.DEFLATED, wbits)
-        buffer and self.feed(buffer)
+
+        super().__init__(buffer)
 
     def compress(self, data):
         chunk = self._compressor.compress(data)
@@ -92,14 +98,11 @@ class DeflateReader(BaseCompressReader):
 
 
 class SnappyReader(BaseCompressReader):
-
     def __init__(self, buffer=None):
-        self._parser = Reader()
         self._decompressor = snappy.StreamDecompressor()
         self._compressor = snappy.StreamCompressor()
 
-        if buffer is not None:
-            self.feed(buffer)
+        super().__init__(buffer)
 
     def compress(self, data):
         compressed = self._compressor.add_chunk(data, compress=True)
@@ -116,31 +119,29 @@ def _encode_body(data):
 
 
 class Reader(BaseReader):
-
     def __init__(self, buffer=None):
-
         self._buffer = bytearray()
         self._payload_size = None
         self._is_header = False
         self._frame_type = None
 
-        if buffer is not None:
-            self.feed(buffer)
+        super().__init__(buffer)
 
     @property
     def buffer(self):
         return self._buffer
 
     def feed(self, chunk):
-        """Put raw chunk of data obtained from connection to buffer.
+        '''Put raw chunk of data obtained from connection to buffer.
         :param data: ``bytes``, raw input data.
-        """
+        '''
         if not chunk:
             return
         self._buffer.extend(chunk)
 
     def gets(self):
         buffer_size = len(self._buffer)
+
         if not self._is_header and buffer_size >= consts.DATA_SIZE:
             size = struct.unpack('!l', self._buffer[:consts.DATA_SIZE])[0]
             self._payload_size = size
@@ -148,13 +149,14 @@ class Reader(BaseReader):
 
         if (self._is_header and buffer_size >=
                 consts.DATA_SIZE + self._payload_size):
-
-            start, end = consts.DATA_SIZE, consts.DATA_SIZE + consts.FRAME_SIZE
+            start = consts.DATA_SIZE
+            end = consts.DATA_SIZE + consts.FRAME_SIZE
 
             self._frame_type = struct.unpack('!l', self._buffer[start:end])[0]
             resp = self._parse_payload()
             self._reset()
             return resp
+
         return False
 
     def _reset(self):
@@ -173,7 +175,9 @@ class Reader(BaseReader):
         elif response_type == consts.FRAME_TYPE_MESSAGE:
             response = self._unpack_message()
         else:
-            raise ProtocolError('unknown response type {}'.format(response_type))
+            # raise ProtocolError('unknown response type '
+            #                     '{}'.format(response_type))
+            return False
         return response_type, response
 
     def _unpack_error(self):
@@ -199,7 +203,7 @@ class Reader(BaseReader):
         return timestamp, attempts, msg_id, body
 
     def encode_command(self, cmd, *args, data=None):
-        """XXX"""
+        '''XXX'''
         _cmd = convert_to_bytes(cmd.upper().strip())
         _args = [convert_to_bytes(a) for a in args]
         body_data, params_data = b'', b''
