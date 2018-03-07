@@ -11,10 +11,12 @@ from ._testutils import BaseTest, run_until_complete
 
 class NsqTest(BaseTest):
     def setUp(self):
+        super().setUp()
         self.topic = 'foo'
         self.host = '127.0.0.1'
         self.port = 4150
-        super().setUp()
+        self.max_in_flight = 25
+        self.total_test_msgs = 100
 
     async def aioTearDown(self):
         conn = Nsqd(self.host, self.port+1, loop=self.loop)
@@ -62,13 +64,14 @@ class NsqTest(BaseTest):
                                deflate_level=0,
                                loop=self.loop)
 
-        for i in range(0, 100):
+        for i in range(0, self.total_test_msgs):
             await nsq.pub(b'foo', 'xxx:{}'.format(i).encode('utf-8'))
 
         await asyncio.sleep(0.1, loop=self.loop)
 
         consumer = NsqConsumer(nsqd_tcp_addresses=[(self.host, self.port)],
-                               max_in_flight=30, loop=self.loop)
+                               max_in_flight=self.max_in_flight,
+                               loop=self.loop)
 
         await consumer.connect()
         await consumer.subscribe(b'foo', b'bar')
@@ -76,17 +79,12 @@ class NsqTest(BaseTest):
         msgs = []
 
         for i, waiter in enumerate(consumer.wait_messages()):
-            # yield from msg.fin()
-            print('-----msgs', len(msgs))
-            is_starved = consumer.is_starved()
-
-            if is_starved:
-                print(">>>>>>>>msgs in list: {}".format(len((msgs))))
-                for m in msgs:
-                    await m.fin()
-
-                msgs = []
+            if i == self.total_test_msgs:
                 break
+
+            if consumer.is_starved():
+                await asyncio.gather(*[m.fin() for m in msgs])
+                msgs = []
 
             msg = await waiter
             msgs.append(msg)

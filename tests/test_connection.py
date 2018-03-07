@@ -70,6 +70,7 @@ class NsqConnectionTest(BaseTest):
         self.assertIsInstance(conn._parser, Reader)
 
         await conn.identify(**config)
+        
         self.assertIsInstance(conn._parser, SnappyReader)
 
         await self._pub_sub_rdy_fin(conn)

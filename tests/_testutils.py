@@ -30,9 +30,7 @@ class BaseTest(unittest.TestCase):
     def tearDown(self):
         self.loop.run_until_complete(self.aioTearDown())
 
-        pending = asyncio.Task.all_tasks()
-
-        for task in pending:
+        for task in asyncio.Task.all_tasks():
             task.cancel()
 
         self.loop.run_until_complete(asyncio.sleep(0.015))
