@@ -1,4 +1,5 @@
 from asyncnsq.http.lookupd import NsqLookupd
+from asyncnsq.http.exceptions import NotFoundError
 
 from ._testutils import BaseTest, run_until_complete
 
@@ -26,8 +27,14 @@ class NsqLookupdTest(BaseTest):
 
     @run_until_complete
     async def test_lookup(self):
+        await self.conn.create_topic('foo')
         res = await self.conn.lookup('foo')
         self.assertIn('producers', res)
+
+    @run_until_complete
+    async def test_lookup_notfound(self):
+        with self.assertRaises(NotFoundError):
+            await self.conn.lookup('unexpected')
 
     @run_until_complete
     async def test_topics(self):
