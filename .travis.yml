@@ -1,31 +1,30 @@
 language: python
 python:
-    - 3.5
-    - 3.6
+- 3.5
+- 3.6
 
 env:
-    - NSQ_DOWNLOAD=nsq-1.0.0-compat.linux-amd64.go1.8
+- NSQ_DOWNLOAD=nsq-1.0.0-compat.linux-amd64.go1.8
 
 install:
-    - sudo apt-get install libsnappy-dev
-    - pip install python-snappy
-    - wget https://s3.amazonaws.com/bitly-downloads/nsq/$NSQ_DOWNLOAD.tar.gz
-    - tar zxvf $NSQ_DOWNLOAD.tar.gz
-    - sudo cp $NSQ_DOWNLOAD/bin/nsqd $NSQ_DOWNLOAD/bin/nsqlookupd /usr/local/bin
-
-    # - pip install pyflakes
-    # - pip install pep8
-    - pip install -e .
+- sudo apt-get install libsnappy-dev
+- pip install python-snappy
+- wget https://s3.amazonaws.com/bitly-downloads/nsq/$NSQ_DOWNLOAD.tar.gz
+- tar zxvf $NSQ_DOWNLOAD.tar.gz
+- sudo cp $NSQ_DOWNLOAD/bin/nsqd $NSQ_DOWNLOAD/bin/nsqlookupd /usr/local/bin
+- pip install -e .
 
 before_script:
-    - nsqlookupd 2> /dev/null &
-    - nsqd --lookupd-tcp-address=127.0.0.1:4160 2> /dev/null &
-    - sleep 0.5
+- nsqlookupd 2> /dev/null &
+- nsqd --lookupd-tcp-address=127.0.0.1:4160 2> /dev/null &
+- sleep 0.5
 
 script:
-    # - pyflakes asyncnsq tests
-    # - pep8 asyncnsq tests
-    - python runtests.py -v
+- python runtests.py -v
 
 after_script:
-    - kill $(jobs -p)
+- kill $(jobs -p)
+
+notifications:
+  slack:
+    secure: "uA8T1D4LwKcr0V5thWXqFGl/3rMeoH7RbLWdIe+JEMp+VOxb1XrD+kEt4nOjTqzDX6A7p92OtZOBObqKpyk9eMqwFxHLtgNccpwcTM/0BqIOMgvJM5r8AuVociRMpjb98FRIkRV+dK6UM3PeZe6piT+GROI2Ia6E7RBcWZg9Wk/DhFQXAQRz1U0yK98ohtr4ZK5jDZEBItDLm4FHYUyOyakczCxP+MESZfPbP/gUBs1tBez8N09d0IRS3kswzA9BbMTONIoLiCgc3GnybJm54O7piNPIYk3X+ILfEtT/3b948sxF0+WO7xoQ6NyIlYOMi/ZLpWBp4r0cJg/mXMJ38E9965FjgwCnBZ9SbXLrU9iI5lKSCNecqTwV5J6vvBPdA+KWBy/5+OI56KeylHsQUU3CD/rrK5SSsZDQGqD3eJsCBsgHs8paxAKYe62xRmWW8ttbWB7eeHXsCcenhvTIqrs7eFl1oM1LnwxndmCmxCZHmKNR6XMNSo7dx59qRSXdN2qVOrOG6i3usLoxCGz/k/Gr22Vj0v3ZpNw22XD5iin1aTqouivIKpXMpKK6QbxGnkJn2ow//OZlAq7QlRBmyklv0nkLJuReQpMZJ8mFHOYKrXC1Pwo9tVtQX8RHLx5db/lLYGSV5ixMaPAyJ7TxRArFmg4YCpgYu9+iHU7g5GE="
