@@ -56,7 +56,7 @@ class NsqLookupd(NsqHTTPConnection):
         Args:
             topic: name of topic
         '''
-        return await self.perform_request('POST', 'create_topic',
+        return await self.perform_request('POST', 'topic/create',
                                           {'topic': topic})
 
     async def delete_topic(self, topic: str):
@@ -65,7 +65,7 @@ class NsqLookupd(NsqHTTPConnection):
         Args:
             topic: the existing topic to delete
         '''
-        return await self.perform_request('POST', 'delete_topic',
+        return await self.perform_request('POST', 'topic/delete',
                                           {'topic': topic})
 
     async def create_channel(self, topic: str, channel: str):
@@ -75,7 +75,7 @@ class NsqLookupd(NsqHTTPConnection):
             topic: name of topic
             channel: name of channel
         '''
-        return await self.perform_request('POST', 'create_channel',
+        return await self.perform_request('POST', 'channel/create',
                                           {'topic': topic,
                                            'channel': channel})
 
@@ -86,7 +86,7 @@ class NsqLookupd(NsqHTTPConnection):
             topic: the existing topic
             channel: the existing channel to delete
         '''
-        return await self.perform_request('POST', 'delete_channel',
+        return await self.perform_request('POST', 'channel/delete',
                                           {'topic': topic,
                                            'channel': channel})
 
