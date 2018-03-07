@@ -9,23 +9,23 @@ class BaseNsqProducer(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def publish(self, topic, message):
-        """XXX
+        '''XXX
 
         :param topic:
         :param message:
         :return:
-        """
+        '''
         pass
 
     @abc.abstractmethod
     def mpublish(self, topic, message, *messages):
-        """
+        '''
 
         :param topic:
         :param message:
         :param messages:
         :return:
-        """
+        '''
         pass
 
     @abc.abstractmethod
@@ -55,23 +55,23 @@ class NsqTCPProducer(BaseNsqProducer):
             self._connections[conn.id] = conn
 
     async def publish(self, topic, message):
-        """XXX
+        '''XXX
 
         :param topic:
         :param message:
         :return:
-        """
+        '''
         conn = self._get_connection()
         return await conn.pub(topic, message)
 
     async def mpublish(self, topic, message, *messages):
-        """XXX
+        '''XXX
 
         :param topic:
         :param message:
         :param messages:
         :return:
-        """
+        '''
         conn = self._get_connection()
         return await conn.mpub(topic, message, *messages)
 
@@ -82,14 +82,14 @@ class NsqTCPProducer(BaseNsqProducer):
 
 async def create_producer(nsqd_tcp_addresses, conn_config,
                           selector_factory=RandomSelector, loop=None):
-    """XXX
+    '''XXX
 
     :param nsqd_tcp_addresses:
     :param conn_config:
     :param selector_factory:
     :param loop:
     :return:
-    """
+    '''
 
     prod = NsqTCPProducer(nsqd_tcp_addresses, conn_config,
                           selector_factory=selector_factory,

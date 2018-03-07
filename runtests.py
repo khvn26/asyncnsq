@@ -77,18 +77,18 @@ COV_ARGS.add_argument(
 
 
 def load_modules(basedir, suffix='.py', *, verbose=False):
-    def list_dir(prefix, dir):
+    def list_dir(prefix, _dir):
         files = []
 
-        modpath = os.path.join(dir, '__init__.py')
+        modpath = os.path.join(_dir, '__init__.py')
         if os.path.isfile(modpath):
-            mod = os.path.split(dir)[-1]
+            mod = os.path.split(_dir)[-1]
             files.append(('{}{}'.format(prefix, mod), modpath))
 
             prefix = '{}{}.'.format(prefix, mod)
 
-        for name in os.listdir(dir):
-            path = os.path.join(dir, name)
+        for name in os.listdir(_dir):
+            path = os.path.join(_dir, name)
 
             if os.path.isdir(path):
                 files.extend(list_dir('{}{}.'.format(prefix, name), path))

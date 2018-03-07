@@ -1,8 +1,6 @@
 import asyncio
 import logging
 import random
-import time
-from collections import deque
 
 from asyncnsq.http import NsqLookupd
 from asyncnsq.http.exceptions import NsqHttpException

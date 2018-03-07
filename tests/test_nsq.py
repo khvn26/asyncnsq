@@ -1,6 +1,5 @@
 import asyncio
 
-from asyncnsq.connection import NsqConnection, create_connection
 from asyncnsq.consumer import NsqConsumer
 from asyncnsq.http import Nsqd
 from asyncnsq.http.exceptions import NotFoundError

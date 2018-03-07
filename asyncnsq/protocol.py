@@ -3,13 +3,12 @@
 :see: http://nsq.io/clients/tcp_protocol_spec.html
 '''
 import abc
-import asyncio
 import struct
 import zlib
 import snappy
 
 from . import consts
-from .exceptions import ProtocolError
+# from .exceptions import ProtocolError
 from .utils import convert_to_bytes
 
 

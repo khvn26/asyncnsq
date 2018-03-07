@@ -1,5 +1,5 @@
 from .connection import NsqHTTPConnection
-from ..consts import DEFAULT_HOST, DEFAULT_NSQD_PORT_HTTP, NEWLINE
+from ..consts import DEFAULT_HOST, DEFAULT_NSQD_PORT_HTTP
 from ..utils import encode_msgs
 
 

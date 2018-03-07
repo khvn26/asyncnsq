@@ -1,24 +1,24 @@
 import asyncio
+
 from . import consts
-import time
-from .log import logger
-from .utils import retry_iterator, RdyControl
 from .connection import NsqConnection
-from .consts import TOUCH, REQ, FIN, RDY, CLS, MPUB, PUB, SUB, AUTH, DPUB
+from .consts import AUTH, CLS, DPUB, FIN, MPUB, PUB, RDY, REQ, SUB, TOUCH
+from .log import logger
+from .utils import retry_iterator
 
 
 async def create_nsq(host='127.0.0.1', port=4150, loop=None, queue=None,
                      heartbeat_interval=30000, feature_negotiation=True,
                      tls_v1=False, snappy=False, deflate=False, deflate_level=6,
-                     consumer=False, sample_rate=0):
-    """"
+                     sample_rate=0):
+    '''"
     param: host: host addr with no protocol. 127.0.0.1 
     param: port: host port 
     param: queue: queue where all the msg been put from the nsq 
     param: heartbeat_interval: heartbeat interval with nsq, set -1 to disable nsq heartbeat check
     params: snappy: snappy compress
     params: deflate: deflate compress  can't set True both with snappy
-    """
+    '''
     # TODO: add parameters type and value validation
     loop = loop or asyncio.get_event_loop()
     queue = queue or asyncio.Queue(loop=loop)
@@ -62,6 +62,7 @@ class Nsq:
         self._rdy_callback = None
 
         self._last_rdy = 0
+        self._is_subscribe = False
 
         self._conn = NsqConnection(self._host, self._port,
                                    queue=self._queue, loop=self._loop,
@@ -136,20 +137,20 @@ class Nsq:
         return self._conn.endpoint
 
     async def auth(self, secret):
-        """
+        '''
 
         :param secret:
         :return:
-        """
+        '''
         return await self._conn.execute(AUTH, data=secret)
 
     async def sub(self, topic, channel):
-        """
+        '''
 
         :param topic:
         :param channel:
         :return:
-        """
+        '''
         self._is_subscribe = True
 
         return await self._conn.execute(SUB, topic, channel)
@@ -160,43 +161,43 @@ class Nsq:
     #         await asyncio.sleep(60, loop=self._loop)
 
     async def pub(self, topic, message):
-        """
+        '''
 
         :param topic:
         :param message:
         :return:
-        """
+        '''
         return await self._conn.execute(PUB, topic, data=message)
 
     async def dpub(self, topic, delay_time, message):
-        """
+        '''
 
         :param topic:
         :param message:
         :param delay_time: delayed time in millisecond
         :return:
-        """
+        '''
         if not delay_time or delay_time is None:
             delay_time = 0
         return await self._conn.execute(DPUB, topic, delay_time, data=message)
 
     async def mpub(self, topic, message, *messages):
-        """
+        '''
 
         :param topic:
         :param message:
         :param messages:
         :return:
-        """
+        '''
         msgs = [message] + list(messages)
         return await self._conn.execute(MPUB, topic, data=msgs)
 
     async def rdy(self, count):
-        """
+        '''
 
         :param count:
         :return:
-        """
+        '''
         if not isinstance(count, int):
             raise TypeError('count argument must be int')
 
@@ -205,35 +206,35 @@ class Nsq:
         return await self._conn.execute(RDY, count)
 
     async def fin(self, message_id):
-        """
+        '''
 
         :param message_id:
         :return:
-        """
+        '''
         return await self._conn.execute(FIN, message_id)
 
     async def req(self, message_id, timeout):
-        """
+        '''
 
         :param message_id:
         :param timeout:
         :return:
-        """
+        '''
         return await self._conn.execute(REQ, message_id, timeout)
 
     async def touch(self, message_id):
-        """
+        '''
 
         :param message_id:
         :return:
-        """
+        '''
         return await self._conn.execute(TOUCH, message_id)
 
     async def cls(self):
-        """
+        '''
 
         :return:
-        """
+        '''
         await self._conn.execute(CLS)
         self.close()
 

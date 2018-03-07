@@ -6,8 +6,6 @@ import time
 from struct import pack
 from urllib.parse import urlparse
 
-from .log import logger
-
 
 TOPIC_NAME_RE = re.compile(r'^[\.a-zA-Z0-9_-]+$')
 CHANNEL_NAME_RE = re.compile(r'^[\.a-zA-Z0-9_-]+(#ephemeral)?$')
@@ -126,8 +124,7 @@ def retry_iterator(init_delay=0.1, max_delay=10.0, factor=2.7182818284590451,
             delay, delay * jitter) if jitter else delay
         delay = min(delay, max_delay) if max_delay else delay
         yield delay
-    else:
-        raise MaxRetriesExceeded()
+    raise MaxRetriesExceeded()
 
 
 REDISTRIBUTE = 0

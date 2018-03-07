@@ -1,11 +1,11 @@
 from collections import defaultdict
 
 class NSQException(Exception):
-    """XXX"""
+    '''XXX'''
 
 
 class ProtocolError(NSQException):
-    """XXX"""
+    '''XXX'''
 
 
 class NSQRequeueMessage(NSQException):
@@ -29,67 +29,67 @@ class NSQErrorCode(NSQException):
 
 
 class NSQInvalid(NSQErrorCode):
-    """E_INVALID"""
+    '''E_INVALID'''
     pass
 
 
 class NSQBadBody(NSQErrorCode):
-    """E_BAD_BODY"""
+    '''E_BAD_BODY'''
     pass
 
 
 class NSQBadTopic(NSQErrorCode):
-    """E_BAD_TOPIC"""
+    '''E_BAD_TOPIC'''
     pass
 
 
 class NSQBadChannel(NSQErrorCode):
-    """E_BAD_CHANNEL"""
+    '''E_BAD_CHANNEL'''
     pass
 
 
 class NSQBadMessage(NSQErrorCode):
-    """E_BAD_MESSAGE"""
+    '''E_BAD_MESSAGE'''
     pass
 
 
 class NSQPutFailed(NSQErrorCode):
-    """E_PUT_FAILED"""
+    '''E_PUT_FAILED'''
     pass
 
 
 class NSQPubFailed(NSQErrorCode):
-    """E_PUB_FAILED"""
+    '''E_PUB_FAILED'''
 
 
 class NSQMPubFailed(NSQErrorCode):
-    """E_MPUB_FAILED"""
+    '''E_MPUB_FAILED'''
 
 
 class NSQAuthDisabled(NSQErrorCode):
-    """E_AUTH_DISABLED"""
+    '''E_AUTH_DISABLED'''
 
 
 class NSQAuthFailed(NSQErrorCode):
-    """E_AUTH_FAILED"""
+    '''E_AUTH_FAILED'''
 
 
 class NSQUnauthorized(NSQErrorCode):
-    """E_UNAUTHORIZED"""
+    '''E_UNAUTHORIZED'''
 
 
 class NSQFinishFailed(NSQErrorCode):
-    """E_FIN_FAILED"""
+    '''E_FIN_FAILED'''
     fatal = False
 
 
 class NSQRequeueFailed(NSQErrorCode):
-    """E_REQ_FAILED"""
+    '''E_REQ_FAILED'''
     fatal = False
 
 
 class NSQTouchFailed(NSQErrorCode):
-    """E_TOUCH_FAILED"""
+    '''E_TOUCH_FAILED'''
     fatal = False
 
 
