@@ -24,40 +24,40 @@ class NsqHTTPProducer(BaseNsqProducer):
             self._connections[conn.endpoint] = conn
 
     async def publish(self, topic, message):
-        """XXX
+        '''XXX
 
         :param topic:
         :param message:
         :return:
-        """
+        '''
         conn = self._get_connection()
         return await conn.pub(topic, message)
 
     async def mpublish(self, topic, message, *messages):
-        """XXX
+        '''XXX
 
         :param topic:
         :param message:
         :param messages:
         :return:
-        """
+        '''
         conn = self._get_connection()
         return await conn.mpub(topic, message, *messages)
 
-    def close(self):
-        for conn in self._connections:
-            conn.close()
+    async def close(self):
+        close_coros = [conn.close() for conn in self._connections.values()]
+        await asyncio.gather(*close_coros)
 
 
 async def create_http_producer(nsqd_http_addresses, selector_factory=RandomSelector,
                                loop=None):
-    """XXX
+    '''XXX
 
     :param nsqd_tcp_addresses:
     :param selector_factory:
     :param loop:
     :return:
-    """
+    '''
 
     prod = NsqHTTPProducer(nsqd_http_addresses,
                            selector_factory=selector_factory, loop=loop)
