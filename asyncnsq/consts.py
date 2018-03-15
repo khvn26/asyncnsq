@@ -36,6 +36,7 @@ TOUCH = b'TOUCH'
 # connection status
 INIT = 0
 CONNECTED = 1
+CLOSED = -1
 
 # NSQ defaults
 DEFAULT_HOST = '127.0.0.1'
