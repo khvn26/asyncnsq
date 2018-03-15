@@ -1,6 +1,10 @@
 import asyncio
+import os
+import shutil
+import subprocess
 import unittest
 from functools import wraps
+from time import sleep
 
 
 def run_until_complete(fun):
@@ -18,6 +22,26 @@ def run_until_complete(fun):
 class BaseTest(unittest.TestCase):
     '''Base test case for unittests.
     '''
+    @classmethod
+    def setUpClass(cls):
+        cls._dir = os.path.abspath('__nsqdata')
+        os.mkdir(cls._dir)
+
+        kwargs = {k: subprocess.DEVNULL for k in ('stdout', 'stderr')}
+        cls._nsqlookupd = subprocess.Popen(['nsqlookupd'], **kwargs)
+        cls._nsqd = subprocess.Popen(['nsqd',
+                                      '--data-path={}'.format(cls._dir),
+                                      '--lookupd-tcp-address=127.0.0.1:4160'],
+                                     **kwargs)
+        sleep(0.5)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._nsqlookupd.kill()
+        cls._nsqd.kill()
+        shutil.rmtree(cls._dir)
+        sleep(0.5)
+
     def setUp(self):
         self.loop = asyncio.get_event_loop()
 

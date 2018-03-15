@@ -14,11 +14,6 @@ install:
 - sudo cp $NSQ_DOWNLOAD/bin/nsqd $NSQ_DOWNLOAD/bin/nsqlookupd /usr/local/bin
 - pip install -e .
 
-before_script:
-- nsqlookupd 2> /dev/null &
-- nsqd --lookupd-tcp-address=127.0.0.1:4160 2> /dev/null &
-- sleep 0.5
-
 script:
 - python runtests.py -v
 
