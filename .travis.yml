@@ -15,7 +15,7 @@ install:
 - pip install -e .
 
 script:
-- python runtests.py -v
+- python runtests.py -v 1
 
 after_script:
 - kill $(jobs -p)
