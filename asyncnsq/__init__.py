@@ -62,6 +62,6 @@ async def create_nsq_consumer(host=None, loop=None, lookupd_poll_interval=5,
     else:
         kwargs['nsqd_tcp_addresses'] = hosts
 
-    conn = NsqConsumer(*kwargs)
+    conn = NsqConsumer(**kwargs)
     await conn.connect()
     return conn
