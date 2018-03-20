@@ -66,8 +66,9 @@ class NsqTest(BaseTest):
 
     @run_until_complete
     async def test_consumer_async_for(self):
+        await self.consumer.subscribe(self.topic, 'test_consumer')
+
         if sys.version_info >= (3, 6):
-            await self.consumer.subscribe(self.topic, 'test_consumer')
 
             counter = 1
 
