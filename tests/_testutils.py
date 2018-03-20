@@ -24,8 +24,13 @@ class BaseTest(unittest.TestCase):
     '''
     @classmethod
     def setUpClass(cls):
-        cls._dir = os.path.abspath('__nsqdata')
-        os.mkdir(cls._dir)
+        cls._dir = os.path.abspath('/tmp/__nsqdata')
+
+        try:
+            os.mkdir(cls._dir)
+        except FileExistsError:
+            shutil.rmtree(cls._dir)
+            os.mkdir(cls._dir)
 
         kwargs = {k: subprocess.DEVNULL for k in ('stdout', 'stderr')}
         cls._nsqlookupd = subprocess.Popen(['nsqlookupd'], **kwargs)
