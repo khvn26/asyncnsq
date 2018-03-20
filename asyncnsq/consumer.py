@@ -14,7 +14,7 @@ class NsqConsumer:
     '''Experiment purposes'''
 
     def __init__(self, nsqd_tcp_addresses=None, lookupd_http_addresses=None,
-                 max_in_flight=42, lookupd_poll_interval=15, loop=None):
+                 max_in_flight=42, lookupd_poll_interval=5, loop=None):
 
         self._nsqd_tcp_addresses = nsqd_tcp_addresses or []
         self._lookupd_http_addresses = lookupd_http_addresses or []

@@ -69,7 +69,6 @@ class NsqTest(BaseTest):
         await self.consumer.subscribe(self.topic, 'test_consumer')
 
         if sys.version_info >= (3, 6):
-
             counter = 1
 
             async for msg in self.consumer.messages():
