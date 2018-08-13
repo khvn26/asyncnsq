@@ -57,7 +57,7 @@ class Nsq:
         self._status = consts.INIT
         self._reconnect = True
         self._rdy_state = 0
-        self._last_message = None
+        self._last_message = 0
 
         self._rdy_callback = None
 
