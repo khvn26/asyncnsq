@@ -55,7 +55,5 @@ setup(name='asyncnsq',
       license="MIT",
       packages=find_packages(exclude=["tests"]),
       install_requires=install_requires,
-      extras_require={
-        'snappy':  ["python-snappy"],
-       }
+      extras_require={"snappy": ["python-snappy"]},
       include_package_data=True)
