@@ -4,7 +4,7 @@ import sys
 
 from setuptools import find_packages, setup
 
-install_requires = ['aiohttp', 'python-snappy']
+install_requires = ['aiohttp']
 
 
 assert sys.version_info >= (3, 5), 'asyncnsq requires Python 3.5 or later'
@@ -55,4 +55,7 @@ setup(name='asyncnsq',
       license="MIT",
       packages=find_packages(exclude=["tests"]),
       install_requires=install_requires,
+      extras_require={
+        'snappy':  ["python-snappy"],
+       }
       include_package_data=True)
