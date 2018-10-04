@@ -36,7 +36,8 @@ async def create_nsq_producer(host='127.0.0.1', port=4150, loop=None, queue=None
 
 
 async def create_nsq_consumer(host=None, loop=None, lookupd_poll_interval=5,
-                              max_in_flight=42, lookupd_http_addresses=None):
+                              max_in_flight=42, lookupd_http_addresses=None,
+                              client_session=None):
     '''
     initial function to get consumer
     param: host: host addr with no protocol. 127.0.0.1
@@ -49,10 +50,10 @@ async def create_nsq_consumer(host=None, loop=None, lookupd_poll_interval=5,
         host = ['tcp://127.0.0.1:4150']
 
     hosts = [get_host_and_port(i) for i in host]
-    loop = loop or asyncio.get_event_loop()
     kwargs = {
         'max_in_flight': max_in_flight,
-        'loop': loop
+        'loop': loop,
+        'client_session': client_session,
     }
     if lookupd_http_addresses:
         kwargs.update({
