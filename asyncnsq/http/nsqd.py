@@ -1,3 +1,5 @@
+from yarl import URL
+
 from .connection import NsqHTTPConnection
 from ..consts import DEFAULT_HOST, DEFAULT_NSQD_PORT_HTTP
 from ..utils import encode_msgs
@@ -8,9 +10,14 @@ class Nsqd(NsqHTTPConnection):
 
     Full reference: 'http://nsq.io/components/nsqd.html'
     '''
-    def __init__(self, host=DEFAULT_HOST, port=DEFAULT_NSQD_PORT_HTTP, *,
-                 loop=None, session=None):
-        super().__init__(host, port, loop=loop, session=session)
+    def __init__(self, host=DEFAULT_HOST, port=DEFAULT_NSQD_PORT_HTTP,
+                 *, base_url=None, loop=None, session=None, secure=False):
+        base_url = base_url or URL.build(
+            scheme='https' if secure else 'http',
+            host=host,
+            port=port,
+        )                 
+        super().__init__(base_url, loop=loop, session=session)
 
     # Public methods below.
 

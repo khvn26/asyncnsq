@@ -1,9 +1,14 @@
 import asyncio
+import logging
 
 import aiohttp
+from yarl import URL
 
 from .._json import json
 from .exceptions import HTTP_EXCEPTIONS
+
+
+logger = logging.getLogger(__name__)
 
 
 class NsqHTTPConnection:
@@ -15,7 +20,7 @@ class NsqHTTPConnection:
         loop: event loop instance.
         session: aiohttp.ClientSession instance.
     '''
-    def __init__(self, host, port, *, loop=None, session=None):
+    def __init__(self, base_url, *, loop=None, session=None):
         self._loop = loop or asyncio.get_event_loop()
 
         if session is not None:
@@ -30,7 +35,7 @@ class NsqHTTPConnection:
         assert self._loop is self._session.loop, \
                'loop and session loop should not be different'
 
-        self.endpoint = 'http://{host}:{port}/'.format(host=host, port=port)
+        self.endpoint = base_url if isinstance(base_url, URL) else URL(base_url)
 
     # Private methods below.
 
@@ -68,8 +73,9 @@ class NsqHTTPConnection:
                 not created with it
         '''
         if not self._own_session:
-            raise RuntimeWarning('tried to close a session provided from '
-                                 'outside, which is probably not a good idea')
+            logger.warning('tried to close a session provided from '
+                           'outside, which is probably not a good idea')
+            return
 
         return await self._session.close()
 
@@ -82,7 +88,7 @@ class NsqHTTPConnection:
             params: (optional) query params.
             body: (optional) request body.
         '''
-        url = self.endpoint + path
+        url = self.endpoint.with_path(path)
 
         kwargs = {
             'params': params

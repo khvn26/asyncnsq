@@ -14,13 +14,14 @@ class NsqConsumer:
     '''Experiment purposes'''
 
     def __init__(self, nsqd_tcp_addresses=None, lookupd_http_addresses=None,
-                 max_in_flight=42, lookupd_poll_interval=5, loop=None):
+                 max_in_flight=42, lookupd_poll_interval=5, client_session=None, loop=None):
 
         self._nsqd_tcp_addresses = nsqd_tcp_addresses or []
         self._lookupd_http_addresses = lookupd_http_addresses or []
         self._max_in_flight = max_in_flight
 
-        self._loop = loop or asyncio.get_event_loop()
+        self._loop = loop or getattr(client_session, "_loop", None) \
+                          or asyncio.get_event_loop()
 
         self._queue = asyncio.Queue(loop=self._loop)
 
@@ -33,6 +34,7 @@ class NsqConsumer:
         self._is_subscribe = False
         self._redistribute_timeout = 5  # sec
         self._lookupd_poll_interval = lookupd_poll_interval  # sec
+        self._client_session = client_session
         self.topic = None
         self._redistribute_task = None
         self._rdy_control = RdyControl(idle_timeout=self._idle_timeout,
@@ -64,10 +66,23 @@ class NsqConsumer:
     async def connect(self):
         await self._connect()
 
-    async def _poll_lookupd(self, host, port, topic, poll_interval=0):
+    async def _poll_lookupd(self, endpoint, topic, poll_interval=0):
         nsqd_addresses = set()
         poll_interval = poll_interval or self._lookupd_poll_interval
-        nsqlookup_conn = NsqLookupd(host, port, loop=self._loop)
+
+        args = ()
+        kwargs = {
+            'session': self._client_session,
+            'loop': self._loop,
+        }
+
+        if len(endpoint) == 2:
+            args = endpoint
+
+        else:
+            kwargs['base_url'] = endpoint
+
+        nsqlookup_conn = NsqLookupd(*args, **kwargs)
 
         resp = None
 
@@ -109,8 +124,12 @@ class NsqConsumer:
 
     async def _connect_via_lookupd(self, *addresses, topic):
         addresses = addresses or self._lookupd_http_addresses
-        host, port = random.choice(addresses)
-        nsqd_addresses = await self._poll_lookupd(host, port, topic)
+        endpoint = random.choice(addresses)
+        if len(endpoint) == 2:
+            kwargs['host'], kwargs['port'] = endpoint
+        else:
+            kwargs['']
+        nsqd_addresses = await self._poll_lookupd(endpoint, topic)
         await self._connect(*nsqd_addresses)
 
     async def subscribe(self, topic, channel):

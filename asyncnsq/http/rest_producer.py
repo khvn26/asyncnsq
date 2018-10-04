@@ -19,8 +19,11 @@ class NsqHTTPProducer(BaseNsqProducer):
         return conn
 
     def connect(self):
-        for host, port in set(self._endpoints):
-            conn = Nsqd(host=host, port=port, loop=self._loop)
+        for endpoint in set(self._endpoints):
+            if len(endpoint) == 2:
+                conn = Nsqd(*endpoint, loop=self._loop)
+            else:
+                conn = Nsqd(base_url=endpoint, loop=self._loop)
             self._connections[conn.endpoint] = conn
 
     async def publish(self, topic, message):

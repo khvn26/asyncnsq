@@ -1,3 +1,5 @@
+from yarl import URL
+
 from .connection import NsqHTTPConnection
 from ..consts import DEFAULT_HOST, DEFAULT_NSQLOOKUPD_PORT_HTTP
 
@@ -8,8 +10,13 @@ class NsqLookupd(NsqHTTPConnection):
     Full reference: 'http://nsq.io/components/nsqlookupd.html'
     '''
     def __init__(self, host=DEFAULT_HOST, port=DEFAULT_NSQLOOKUPD_PORT_HTTP,
-                 *, loop=None, session=None):
-        super().__init__(host, port, loop=loop, session=session)
+                 *, base_url=None, loop=None, session=None, secure=False):
+        base_url = base_url or URL.build(
+            scheme='https' if secure else 'http',
+            host=host,
+            port=port,
+        )
+        super().__init__(base_url, loop=loop, session=session)
 
     # Public methods below.
 
