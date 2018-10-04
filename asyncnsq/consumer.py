@@ -125,10 +125,6 @@ class NsqConsumer:
     async def _connect_via_lookupd(self, *addresses, topic):
         addresses = addresses or self._lookupd_http_addresses
         endpoint = random.choice(addresses)
-        if len(endpoint) == 2:
-            kwargs['host'], kwargs['port'] = endpoint
-        else:
-            kwargs['']
         nsqd_addresses = await self._poll_lookupd(endpoint, topic)
         await self._connect(*nsqd_addresses)
 
