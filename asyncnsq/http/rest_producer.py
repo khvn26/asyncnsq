@@ -7,9 +7,10 @@ from ..producer import BaseNsqProducer
 class NsqHTTPProducer(BaseNsqProducer):
 
     def __init__(self, nsqd_http_addresses, selector_factory=RandomSelector,
-                 loop=None):
+                 client_session=None, loop=None):
         self._endpoints = nsqd_http_addresses
-        self._loop = loop or asyncio.get_event_loop()
+        self._client_session = client_session
+        self._loop = loop or getattr(client_session, '_loop', None) or asyncio.get_event_loop()
         self._selector = selector_factory()
         self._connections = {}
 
@@ -21,9 +22,9 @@ class NsqHTTPProducer(BaseNsqProducer):
     def connect(self):
         for endpoint in set(self._endpoints):
             if len(endpoint) == 2:
-                conn = Nsqd(*endpoint, loop=self._loop)
+                conn = Nsqd(*endpoint, loop=self._loop, session=self._client_session)
             else:
-                conn = Nsqd(base_url=endpoint, loop=self._loop)
+                conn = Nsqd(base_url=endpoint, loop=self._loop, session=self._client_session)
             self._connections[conn.endpoint] = conn
 
     async def publish(self, topic, message):
