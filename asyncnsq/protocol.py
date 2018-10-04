@@ -5,7 +5,10 @@
 import abc
 import struct
 import zlib
-import snappy
+try:
+    import snappy
+except ImportError:
+    snappy = None
 
 from . import consts
 # from .exceptions import ProtocolError
@@ -98,6 +101,9 @@ class DeflateReader(BaseCompressReader):
 
 class SnappyReader(BaseCompressReader):
     def __init__(self, buffer=None):
+        if not snappy:
+            raise RuntimeError('python-snappy required for compression')
+
         self._decompressor = snappy.StreamDecompressor()
         self._compressor = snappy.StreamCompressor()
 
